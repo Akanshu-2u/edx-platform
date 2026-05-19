@@ -262,7 +262,7 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
         self.historical_social_auth_model = apps.get_model('support', 'HistoricalUserSocialAuth')
 
     def _create_historical_record(self, provider='google-oauth2', uid='user@example.com', extra_data=None):
-        """Create a HistoricalUserSocialAuth record directly, bypassing ORM signals."""
+        """Create a HistoricalUserSocialAuth record directly for test setup."""
         extra_data = extra_data or {'email': uid, 'name': 'Test User'}
         return self.historical_social_auth_model.objects.create(
             user=self.user,
