@@ -238,7 +238,14 @@ def redact_and_delete_historical_social_auth(user_id):
     Redacting before deleting ensures any downstream consumer only ever sees the sanitised
     value before the rows are removed.
     """
-    HistoricalUserSocialAuth = apps.get_model('support', 'HistoricalUserSocialAuth')
+    try:
+        HistoricalUserSocialAuth = apps.get_model('support', 'HistoricalUserSocialAuth')
+    except LookupError:
+        LOGGER.info(
+            'redact_and_delete_historical_social_auth: support app not installed, skipping for user_id=%s',
+            user_id,
+        )
+        return
     historical_queryset = HistoricalUserSocialAuth.objects.filter(user_id=user_id)
     historical_queryset.update(
         uid=Concat(

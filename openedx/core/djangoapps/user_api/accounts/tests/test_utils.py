@@ -1,5 +1,6 @@
 """ Unit tests for custom UserProfile properties. """
 
+import unittest.mock
 from contextlib import contextmanager
 
 import ddt
@@ -258,14 +259,12 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
     def setUp(self):
         super().setUp()
         self.user = UserFactory.create(username='testuser', email='testuser@example.com')
-        self.HistoricalUserSocialAuth = apps.get_model('support', 'HistoricalUserSocialAuth')
+        self.historical_social_auth_model = apps.get_model('support', 'HistoricalUserSocialAuth')
 
     def _create_historical_record(self, provider='google-oauth2', uid='user@example.com', extra_data=None):
-        """
-        Create a HistoricalUserSocialAuth record directly (bypassing ORM signals).
-        """
+        """Create a HistoricalUserSocialAuth record directly, bypassing ORM signals."""
         extra_data = extra_data or {'email': uid, 'name': 'Test User'}
-        return self.HistoricalUserSocialAuth.objects.create(
+        return self.historical_social_auth_model.objects.create(
             user=self.user,
             id=1,
             provider=provider,
@@ -277,61 +276,42 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
             history_type='+',
         )
 
-    def test_redacts_uid_before_deleting(self):
-        """
-        redact_and_delete_historical_social_auth should UPDATE uid before DELETE
-        so any downstream consumer sees only the sanitised value.
-        """
-        record = self._create_historical_record(uid='private@example.com')
-        history_id = record.history_id
-
-        with CaptureQueriesContext(connection) as ctx:
-            redact_and_delete_historical_social_auth(self.user.id)
-
-        assert_update_before_delete(
-            [query['sql'] for query in ctx],
-            table='support_historicalusersocialauth',
-        )
-        assert not self.HistoricalUserSocialAuth.objects.filter(history_id=history_id).exists()
-
     def test_redacted_uid_format(self):
         """
-        The redacted uid written before deletion must follow REDACTED_SOCIAL_AUTH_UID_PREFIX/SUFFIX.
-        This is verified by intercepting the UPDATE before the DELETE fires.
+        uid must follow the redacted-before-delete-{history_id}@safe.com format and extra_data
+        must be cleared. A pre_delete signal re-fetches the row at deletion time to confirm the
+        UPDATE was written before the DELETE fired.
         """
         record = self._create_historical_record(uid='private@example.com')
         history_id = record.history_id
+        expected_uid = f'{REDACTED_SOCIAL_AUTH_UID_PREFIX}{history_id}{REDACTED_SOCIAL_AUTH_UID_SUFFIX}'
 
-        original_delete = self.HistoricalUserSocialAuth.objects.filter(
-            user_id=self.user.id
-        ).delete
+        signal_capture = {}
 
-        deleted = []
+        def capture_uid_at_delete(sender, instance, **kwargs):  # pylint: disable=unused-argument
+            redacted_row = self.historical_social_auth_model.objects.get(history_id=instance.history_id)
+            signal_capture['uid'] = redacted_row.uid
+            signal_capture['extra_data'] = redacted_row.extra_data
 
-        def capture_delete():
-            deleted.append(True)
+        pre_delete.connect(capture_uid_at_delete, sender=self.historical_social_auth_model)
+        try:
+            redact_and_delete_historical_social_auth(self.user.id)
+        finally:
+            pre_delete.disconnect(capture_uid_at_delete, sender=self.historical_social_auth_model)
 
-        qs = self.HistoricalUserSocialAuth.objects.filter(user_id=self.user.id)
-        qs.update(
-            **{
-                'uid': f'{REDACTED_SOCIAL_AUTH_UID_PREFIX}{history_id}{REDACTED_SOCIAL_AUTH_UID_SUFFIX}',
-                'extra_data': {},
-            }
+        assert signal_capture['uid'] == expected_uid, (
+            f"uid at delete time was {signal_capture['uid']!r}, expected {expected_uid!r}"
         )
-        refreshed = self.HistoricalUserSocialAuth.objects.get(history_id=history_id)
-        assert refreshed.uid == f'{REDACTED_SOCIAL_AUTH_UID_PREFIX}{history_id}{REDACTED_SOCIAL_AUTH_UID_SUFFIX}'
-        assert refreshed.extra_data == {}
+        assert signal_capture['extra_data'] == {}
+        assert not self.historical_social_auth_model.objects.filter(history_id=history_id).exists()
 
     def test_deletes_all_records_for_user(self):
-        """
-        All HistoricalUserSocialAuth rows for the user are deleted, records for
-        other users are left untouched.
-        """
+        """All rows for the retired user are deleted; other users' rows are untouched."""
         self._create_historical_record(provider='google-oauth2', uid='google@example.com')
         self._create_historical_record(provider='tpa-saml', uid='saml@example.com')
 
         other_user = UserFactory.create(username='otheruser', email='other@example.com')
-        other_record = self.HistoricalUserSocialAuth.objects.create(
+        other_record = self.historical_social_auth_model.objects.create(
             user=other_user,
             id=2,
             provider='google-oauth2',
@@ -345,13 +325,13 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
 
         redact_and_delete_historical_social_auth(self.user.id)
 
-        assert not self.HistoricalUserSocialAuth.objects.filter(user=self.user).exists()
-        assert self.HistoricalUserSocialAuth.objects.filter(history_id=other_record.history_id).exists()
+        assert not self.historical_social_auth_model.objects.filter(user=self.user).exists()
+        assert self.historical_social_auth_model.objects.filter(history_id=other_record.history_id).exists()
 
-    def test_no_op_when_no_records_exist(self):
-        """
-        redact_and_delete_historical_social_auth should not raise when the user
-        has no HistoricalUserSocialAuth records.
-        """
-        redact_and_delete_historical_social_auth(self.user.id)
-        assert not self.HistoricalUserSocialAuth.objects.filter(user=self.user).exists()
+    def test_skips_gracefully_when_support_app_not_installed(self):
+        """Returns without error when the support app is not installed."""
+        with unittest.mock.patch(
+            'openedx.core.djangoapps.user_api.accounts.utils.apps.get_model',
+            side_effect=LookupError('support'),
+        ):
+            redact_and_delete_historical_social_auth(self.user.id)
