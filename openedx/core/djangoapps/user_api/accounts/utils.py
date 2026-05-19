@@ -235,8 +235,9 @@ def redact_and_delete_historical_social_auth(user_id):
     change.  They are not touched by the standard UserSocialAuth retirement step, leaving raw
     email addresses stored in the ``uid`` field indefinitely.
 
-    Redacting before deleting ensures any downstream consumer only ever sees the sanitised
-    value before the rows are removed.
+    Redacting before deleting ensures deletion-time handlers or other observers in the same
+    process/transaction see sanitised values before the rows are removed. It does not imply
+    that other transactions will observe the intermediate redacted state before deletion.
     """
     try:
         HistoricalUserSocialAuth = apps.get_model('support', 'HistoricalUserSocialAuth')
