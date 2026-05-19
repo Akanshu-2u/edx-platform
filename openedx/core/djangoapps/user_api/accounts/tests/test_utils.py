@@ -259,17 +259,14 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
     def setUp(self):
         super().setUp()
         self.user = UserFactory.create(username='testuser', email='testuser@example.com')
-        try:
-            self.historical_social_auth_model = apps.get_model('support', 'HistoricalUserSocialAuth')
-        except LookupError:
-            self.skipTest("support.HistoricalUserSocialAuth is not available in this test environment")
+        self.historical_social_auth_model = apps.get_model('support', 'HistoricalUserSocialAuth')
 
-    def _create_historical_record(self, provider='google-oauth2', uid='user@example.com', extra_data=None):
+    def _create_historical_record(self, provider='google-oauth2', uid='user@example.com', extra_data=None, source_id=1):
         """Create a HistoricalUserSocialAuth record directly for test setup."""
         extra_data = extra_data or {'email': uid, 'name': 'Test User'}
         return self.historical_social_auth_model.objects.create(
             user=self.user,
-            id=1,
+            id=source_id,
             provider=provider,
             uid=uid,
             extra_data=extra_data,
@@ -310,8 +307,8 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
 
     def test_deletes_all_records_for_user(self):
         """All rows for the retired user are deleted; other users' rows are untouched."""
-        self._create_historical_record(provider='google-oauth2', uid='google@example.com')
-        self._create_historical_record(provider='tpa-saml', uid='saml@example.com')
+        self._create_historical_record(provider='google-oauth2', uid='google@example.com', source_id=1)
+        self._create_historical_record(provider='tpa-saml', uid='saml@example.com', source_id=2)
 
         other_user = UserFactory.create(username='otheruser', email='other@example.com')
         other_record = self.historical_social_auth_model.objects.create(

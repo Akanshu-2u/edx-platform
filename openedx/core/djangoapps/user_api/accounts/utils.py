@@ -242,6 +242,10 @@ def redact_and_delete_historical_social_auth(user_id):
     try:
         HistoricalUserSocialAuth = apps.get_model('support', 'HistoricalUserSocialAuth')
     except LookupError:
+        LOGGER.debug(
+            'redact_and_delete_historical_social_auth: support app not installed, skipping for user_id=%s',
+            user_id,
+        )
         return
     historical_queryset = HistoricalUserSocialAuth.objects.filter(user_id=user_id)
     historical_queryset.update(
