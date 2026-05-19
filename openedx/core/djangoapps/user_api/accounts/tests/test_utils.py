@@ -259,7 +259,10 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
     def setUp(self):
         super().setUp()
         self.user = UserFactory.create(username='testuser', email='testuser@example.com')
-        self.historical_social_auth_model = apps.get_model('support', 'HistoricalUserSocialAuth')
+        try:
+            self.historical_social_auth_model = apps.get_model('support', 'HistoricalUserSocialAuth')
+        except LookupError:
+            self.skipTest('support.HistoricalUserSocialAuth is not available in this test environment')
 
     def _create_historical_record(self, provider='google-oauth2', uid='user@example.com', extra_data=None, source_id=1):
         """Create a HistoricalUserSocialAuth record directly for test setup."""
