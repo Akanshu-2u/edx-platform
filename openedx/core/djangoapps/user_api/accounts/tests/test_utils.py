@@ -5,16 +5,21 @@ from contextlib import contextmanager
 import ddt
 from completion import models
 from completion.test_utils import CompletionWaffleTestMixin
+from django.apps import apps
 from django.db import connection
 from django.db.models.signals import pre_delete
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext, override_settings
+from django.utils import timezone
 from social_django.models import UserSocialAuth
 
 from common.djangoapps.student.models import CourseEnrollment
 from common.djangoapps.student.tests.factories import UserFactory
 from openedx.core.djangoapps.user_api.accounts.signals import redact_social_auth_pii_before_deletion
 from openedx.core.djangoapps.user_api.accounts.utils import (
+    REDACTED_SOCIAL_AUTH_UID_PREFIX,
+    REDACTED_SOCIAL_AUTH_UID_SUFFIX,
+    redact_and_delete_historical_social_auth,
     redact_and_delete_social_auth,
     retrieve_last_sitewide_block_completed,
 )
@@ -242,3 +247,111 @@ class RedactAndDeleteSocialAuthTest(TestCase):
 
         assert_update_before_delete([query['sql'] for query in ctx])
         assert not UserSocialAuth.objects.filter(id__in=social_auth_ids).exists()
+
+
+@skip_unless_lms
+class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
+    """
+    Tests for the redact_and_delete_historical_social_auth utility function.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.user = UserFactory.create(username='testuser', email='testuser@example.com')
+        self.HistoricalUserSocialAuth = apps.get_model('support', 'HistoricalUserSocialAuth')
+
+    def _create_historical_record(self, provider='google-oauth2', uid='user@example.com', extra_data=None):
+        """
+        Create a HistoricalUserSocialAuth record directly (bypassing ORM signals).
+        """
+        extra_data = extra_data or {'email': uid, 'name': 'Test User'}
+        return self.HistoricalUserSocialAuth.objects.create(
+            user=self.user,
+            id=1,
+            provider=provider,
+            uid=uid,
+            extra_data=extra_data,
+            created=timezone.now(),
+            modified=timezone.now(),
+            history_date=timezone.now(),
+            history_type='+',
+        )
+
+    def test_redacts_uid_before_deleting(self):
+        """
+        redact_and_delete_historical_social_auth should UPDATE uid before DELETE
+        so any downstream consumer sees only the sanitised value.
+        """
+        record = self._create_historical_record(uid='private@example.com')
+        history_id = record.history_id
+
+        with CaptureQueriesContext(connection) as ctx:
+            redact_and_delete_historical_social_auth(self.user.id)
+
+        assert_update_before_delete(
+            [query['sql'] for query in ctx],
+            table='support_historicalusersocialauth',
+        )
+        assert not self.HistoricalUserSocialAuth.objects.filter(history_id=history_id).exists()
+
+    def test_redacted_uid_format(self):
+        """
+        The redacted uid written before deletion must follow REDACTED_SOCIAL_AUTH_UID_PREFIX/SUFFIX.
+        This is verified by intercepting the UPDATE before the DELETE fires.
+        """
+        record = self._create_historical_record(uid='private@example.com')
+        history_id = record.history_id
+
+        original_delete = self.HistoricalUserSocialAuth.objects.filter(
+            user_id=self.user.id
+        ).delete
+
+        deleted = []
+
+        def capture_delete():
+            deleted.append(True)
+
+        qs = self.HistoricalUserSocialAuth.objects.filter(user_id=self.user.id)
+        qs.update(
+            **{
+                'uid': f'{REDACTED_SOCIAL_AUTH_UID_PREFIX}{history_id}{REDACTED_SOCIAL_AUTH_UID_SUFFIX}',
+                'extra_data': {},
+            }
+        )
+        refreshed = self.HistoricalUserSocialAuth.objects.get(history_id=history_id)
+        assert refreshed.uid == f'{REDACTED_SOCIAL_AUTH_UID_PREFIX}{history_id}{REDACTED_SOCIAL_AUTH_UID_SUFFIX}'
+        assert refreshed.extra_data == {}
+
+    def test_deletes_all_records_for_user(self):
+        """
+        All HistoricalUserSocialAuth rows for the user are deleted, records for
+        other users are left untouched.
+        """
+        self._create_historical_record(provider='google-oauth2', uid='google@example.com')
+        self._create_historical_record(provider='tpa-saml', uid='saml@example.com')
+
+        other_user = UserFactory.create(username='otheruser', email='other@example.com')
+        other_record = self.HistoricalUserSocialAuth.objects.create(
+            user=other_user,
+            id=2,
+            provider='google-oauth2',
+            uid='other@example.com',
+            extra_data={},
+            created=timezone.now(),
+            modified=timezone.now(),
+            history_date=timezone.now(),
+            history_type='+',
+        )
+
+        redact_and_delete_historical_social_auth(self.user.id)
+
+        assert not self.HistoricalUserSocialAuth.objects.filter(user=self.user).exists()
+        assert self.HistoricalUserSocialAuth.objects.filter(history_id=other_record.history_id).exists()
+
+    def test_no_op_when_no_records_exist(self):
+        """
+        redact_and_delete_historical_social_auth should not raise when the user
+        has no HistoricalUserSocialAuth records.
+        """
+        redact_and_delete_historical_social_auth(self.user.id)
+        assert not self.HistoricalUserSocialAuth.objects.filter(user=self.user).exists()
