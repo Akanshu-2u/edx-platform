@@ -11,7 +11,7 @@ import waffle  # pylint: disable=invalid-django-waffle-import
 from completion.models import BlockCompletion
 from completion.waffle import ENABLE_COMPLETION_TRACKING_SWITCH
 from django.conf import settings
-from django.db.models import CharField, Value
+from django.db.models import CharField, TextField, Value
 from django.db.models.functions import Cast, Concat
 from django.utils.translation import gettext as _
 from edx_django_utils.user import generate_password
@@ -248,7 +248,7 @@ def redact_and_delete_historical_social_auth(user_id):
     historical_queryset.update(
         uid=Concat(
             Value(REDACTED_SOCIAL_AUTH_UID_PREFIX),
-            Cast('history_id', output_field=CharField()),
+            Cast('history_id', output_field=TextField()),
             Value(REDACTED_SOCIAL_AUTH_UID_SUFFIX),
         ),
         extra_data={},
