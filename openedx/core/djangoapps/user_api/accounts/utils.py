@@ -10,7 +10,6 @@ import string
 import waffle  # pylint: disable=invalid-django-waffle-import
 from completion.models import BlockCompletion
 from completion.waffle import ENABLE_COMPLETION_TRACKING_SWITCH
-from django.apps import apps
 from django.conf import settings
 from django.db.models import CharField, Value
 from django.db.models.functions import Cast, Concat
@@ -232,22 +231,20 @@ def redact_and_delete_historical_social_auth(user_id):
     Redact PII from all HistoricalUserSocialAuth records for the given user, then delete them.
 
     HistoricalUserSocialAuth rows are django-simple-history snapshots of every UserSocialAuth
-    change.  They are not touched by the standard UserSocialAuth retirement step, leaving raw
-    email addresses stored in the ``uid`` field indefinitely.
+    change. They are not touched by the standard UserSocialAuth retirement step, leaving raw
+    email addresses stored in the uid field indefinitely.
 
-    Redacting before deleting ensures deletion-time handlers or other observers in the same
-    process/transaction see sanitised values before the rows are removed. It does not imply
-    that other transactions will observe the intermediate redacted state before deletion.
+    Redacting before deleting ensures deletion-time handlers see sanitised values before
+    the rows are removed.
     """
-    try:
-        HistoricalUserSocialAuth = apps.get_model('support', 'HistoricalUserSocialAuth')
-    except LookupError:
+    historical_social_auth_model = getattr(getattr(UserSocialAuth, 'history', None), 'model', None)
+    if historical_social_auth_model is None:
         LOGGER.debug(
-            'redact_and_delete_historical_social_auth: support app not installed, skipping for user_id=%s',
+            'redact_and_delete_historical_social_auth: UserSocialAuth has no history model, skipping for user_id=%s',
             user_id,
         )
         return
-    historical_queryset = HistoricalUserSocialAuth.objects.filter(user_id=user_id)
+    historical_queryset = historical_social_auth_model.objects.filter(user_id=user_id)
     historical_queryset.update(
         uid=Concat(
             Value(REDACTED_SOCIAL_AUTH_UID_PREFIX),

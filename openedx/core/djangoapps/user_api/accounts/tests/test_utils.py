@@ -265,7 +265,9 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
             self.skipTest('support.HistoricalUserSocialAuth is not available in this test environment')
 
     def _create_historical_record(self, provider='google-oauth2', uid='user@example.com', extra_data=None, source_id=1):
-        """Create a HistoricalUserSocialAuth record directly for test setup."""
+        """
+        Create a HistoricalUserSocialAuth record directly for test setup.
+        """
         if extra_data is None:
             extra_data = {'email': uid, 'name': 'Test User'}
         return self.historical_social_auth_model.objects.create(
@@ -283,8 +285,8 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
     def test_redacted_uid_format(self):
         """
         uid must follow the redacted-before-delete-{history_id}@safe.com format and extra_data
-        must be cleared. A pre_delete signal re-fetches the row at deletion time to confirm the
-        UPDATE was written before the DELETE fired.
+        must be cleared. Verified at two levels: SQL ordering via CaptureQueriesContext (UPDATE
+        precedes DELETE, history_id-based filtering) and uid value via pre_delete signal.
         """
         record = self._create_historical_record(uid='private@example.com')
         history_id = record.history_id
@@ -293,16 +295,29 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
         signal_capture = {}
 
         def capture_uid_at_delete(sender, instance, **kwargs):  # pylint: disable=unused-argument
+            # Re-fetch from DB to read the value written by UPDATE, not the stale in-memory instance.
             redacted_row = self.historical_social_auth_model.objects.get(history_id=instance.history_id)
             signal_capture['uid'] = redacted_row.uid
             signal_capture['extra_data'] = redacted_row.extra_data
 
         pre_delete.connect(capture_uid_at_delete, sender=self.historical_social_auth_model)
         try:
-            redact_and_delete_historical_social_auth(self.user.id)
+            with CaptureQueriesContext(connection) as ctx:
+                redact_and_delete_historical_social_auth(self.user.id)
         finally:
             pre_delete.disconnect(capture_uid_at_delete, sender=self.historical_social_auth_model)
 
+        # Verify SQL-level: UPDATE before DELETE, ID-based filtering.
+        assert_update_before_delete(
+            [query['sql'] for query in ctx],
+            table='support_historicalusersocialauth',
+        )
+        sql_list = [query['sql'].upper() for query in ctx]
+        assert any('HISTORY_ID' in sql and 'UPDATE' in sql for sql in sql_list), (
+            'UPDATE must filter by history_id'
+        )
+
+        # Verify value-level: correct redacted uid and cleared extra_data.
         assert signal_capture['uid'] == expected_uid, (
             f"uid at delete time was {signal_capture['uid']!r}, expected {expected_uid!r}"
         )
@@ -310,7 +325,9 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
         assert not self.historical_social_auth_model.objects.filter(history_id=history_id).exists()
 
     def test_deletes_all_records_for_user(self):
-        """All rows for the retired user are deleted; other users' rows are untouched."""
+        """
+        All rows for the retired user are deleted; other users' rows are untouched.
+        """
         self._create_historical_record(provider='google-oauth2', uid='google@example.com', source_id=1)
         self._create_historical_record(provider='tpa-saml', uid='saml@example.com', source_id=2)
 
@@ -332,10 +349,9 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
         assert not self.historical_social_auth_model.objects.filter(user=self.user).exists()
         assert self.historical_social_auth_model.objects.filter(history_id=other_record.history_id).exists()
 
-    def test_skips_gracefully_when_support_app_not_installed(self):
-        """Returns without error when the support app is not installed."""
-        with unittest.mock.patch(
-            'openedx.core.djangoapps.user_api.accounts.utils.apps.get_model',
-            side_effect=LookupError('support'),
-        ):
+    def test_skips_gracefully_when_history_model_unavailable(self):
+        """
+        Returns without error when UserSocialAuth has no history model registered.
+        """
+        with unittest.mock.patch.object(UserSocialAuth, 'history', None):
             redact_and_delete_historical_social_auth(self.user.id)
