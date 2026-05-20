@@ -286,7 +286,7 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
         """
         uid must follow the redacted-before-delete-{history_id}@safe.com format and extra_data
         must be cleared. Verified at two levels: SQL ordering via CaptureQueriesContext (UPDATE
-        precedes DELETE, history_id-based filtering) and uid value via pre_delete signal.
+        precedes DELETE, history_id embedded in SET expression) and uid value via pre_delete signal.
         """
         record = self._create_historical_record(uid='private@example.com')
         history_id = record.history_id
@@ -307,14 +307,17 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
         finally:
             pre_delete.disconnect(capture_uid_at_delete, sender=self.historical_social_auth_model)
 
-        # Verify SQL-level: UPDATE before DELETE, ID-based filtering.
+        # Verify SQL-level: UPDATE precedes DELETE on the correct table.
+        table_name = self.historical_social_auth_model._meta.db_table
         assert_update_before_delete(
             [query['sql'] for query in ctx],
-            table='support_historicalusersocialauth',
+            table=table_name,
         )
+        # Verify history_id appears in the SET expression of the UPDATE, not just the WHERE clause,
+        # since rows are filtered by user_id and history_id is used to build the unique redacted uid.
         sql_list = [query['sql'].upper() for query in ctx]
         assert any('HISTORY_ID' in sql and 'UPDATE' in sql for sql in sql_list), (
-            'UPDATE must filter by history_id'
+            'UPDATE must incorporate history_id into the redacted uid SET expression'
         )
 
         # Verify value-level: correct redacted uid and cleared extra_data.
