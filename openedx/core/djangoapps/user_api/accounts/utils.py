@@ -239,7 +239,7 @@ def redact_and_delete_historical_social_auth(user_id):
     """
     historical_social_auth_model = getattr(getattr(UserSocialAuth, 'history', None), 'model', None)
     if historical_social_auth_model is None:
-        LOGGER.debug(
+        LOGGER.warning(
             'redact_and_delete_historical_social_auth: UserSocialAuth has no history model, skipping for user_id=%s',
             user_id,
         )
@@ -266,6 +266,8 @@ def create_retirement_request_and_deactivate_account(user):
 
     # Redact and unlink LMS social auth accounts.
     redact_and_delete_social_auth(user.id)
+    # Redact and delete django-simple-history snapshots of social auth records.
+    redact_and_delete_historical_social_auth(user.id)
 
     # Change LMS password & email
     user.email = get_retired_email_by_email(user.email)

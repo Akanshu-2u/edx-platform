@@ -9,7 +9,7 @@ from django.db import transaction
 from common.djangoapps.student.models import AccountRecovery, Registration, get_retired_email_by_email
 from openedx.core.djangolib.oauth2_retirement_utils import retire_dot_oauth2_models
 
-from ...accounts.utils import redact_and_delete_social_auth
+from ...accounts.utils import redact_and_delete_historical_social_auth, redact_and_delete_social_auth
 from ...models import BulkUserRetirementConfig, UserRetirementStatus
 
 logger = logging.getLogger(__name__)
@@ -146,6 +146,8 @@ class Command(BaseCommand):
                     UserRetirementStatus.create_retirement(user)
                     # Redact and unlink LMS social auth accounts.
                     redact_and_delete_social_auth(user.id)
+                    # Redact and delete django-simple-history snapshots of social auth records.
+                    redact_and_delete_historical_social_auth(user.id)
                     # Change LMS password & email
                     user.email = get_retired_email_by_email(user.email)
                     user.set_unusable_password()
