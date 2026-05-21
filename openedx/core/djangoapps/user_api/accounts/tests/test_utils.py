@@ -1,4 +1,7 @@
-"""Unit tests for user account utility functions, including social links, completion helpers, and social-auth PII redaction utilities."""
+"""
+Unit tests for user account utility functions, including social links, completion helpers,
+and social-auth PII redaction utilities.
+"""
 
 import unittest.mock
 from contextlib import contextmanager
