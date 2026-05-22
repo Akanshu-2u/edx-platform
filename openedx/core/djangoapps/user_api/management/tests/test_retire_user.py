@@ -184,7 +184,7 @@ def test_retire_user_redacts_historical_social_auth(setup_retirement_states):  #
     """
     historical_model = getattr(getattr(UserSocialAuth, 'history', None), 'model', None)
     if historical_model is None:
-        pytest.skip('UserSocialAuth has no history model in this environment')
+        pytest.skip('UserSocialAuth has no history model, skipping')
 
     user = UserFactory.create(username='hist-sso-user', email='hist-sso-user@example.com')
     record = historical_model.objects.create(

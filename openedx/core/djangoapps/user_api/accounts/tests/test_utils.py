@@ -9,7 +9,6 @@ from contextlib import contextmanager
 import ddt
 from completion import models
 from completion.test_utils import CompletionWaffleTestMixin
-from django.apps import apps
 from django.db import connection
 from django.db.models.signals import pre_delete
 from django.test import TestCase
@@ -262,10 +261,9 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
     def setUp(self):
         super().setUp()
         self.user = UserFactory.create(username='testuser', email='testuser@example.com')
-        try:
-            self.historical_social_auth_model = apps.get_model('support', 'HistoricalUserSocialAuth')
-        except LookupError:
-            self.skipTest('support.HistoricalUserSocialAuth is not available in this test environment')
+        self.historical_social_auth_model = getattr(getattr(UserSocialAuth, 'history', None), 'model', None)
+        if self.historical_social_auth_model is None:
+            self.skipTest('UserSocialAuth has no history model, skipping')
 
     def _create_historical_record(self, provider='google-oauth2', uid='user@example.com', extra_data=None, source_id=1):
         """
