@@ -230,12 +230,8 @@ def redact_and_delete_historical_social_auth(user_id):
     """
     Redact PII from all HistoricalUserSocialAuth records for the given user, then delete them.
 
-    HistoricalUserSocialAuth rows are django-simple-history snapshots of every UserSocialAuth
-    change. They are not touched by the standard UserSocialAuth retirement step, leaving raw
-    email addresses stored in the uid field indefinitely.
-
-    Redacting before deleting ensures deletion-time handlers see sanitised values before
-    the rows are removed.
+    HistoricalUserSocialAuth rows are django-simple-history snapshots not covered by the
+    standard UserSocialAuth retirement step, so they must be explicitly cleaned up.
     """
     historical_social_auth_model = getattr(getattr(UserSocialAuth, 'history', None), 'model', None)
     if historical_social_auth_model is None:

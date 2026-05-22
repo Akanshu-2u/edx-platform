@@ -13,6 +13,7 @@ from django.core.management import CommandError, call_command
 from django.db import connection
 from django.db.models.signals import pre_delete
 from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 from social_django.models import UserSocialAuth
 
 from common.djangoapps.student.tests.factories import UserFactory  # lint-amnesty, pylint: disable=wrong-import-order
@@ -171,3 +172,34 @@ def test_retire_user_redacts_sso_pii_before_deletion(setup_retirement_states, so
     retired_user_status = UserRetirementStatus.objects.filter(original_username=user.username).first()
     assert retired_user_status is not None
     assert retired_user_status.original_email == 'sso-user@example.com'
+
+
+@skip_unless_lms
+def test_retire_user_redacts_historical_social_auth(setup_retirement_states):  # lint-amnesty, pylint: disable=redefined-outer-name, unused-argument  # noqa: F811
+    """
+    Test that HistoricalUserSocialAuth records are redacted and deleted when retire_user is called.
+
+    HistoricalUserSocialAuth rows are django-simple-history snapshots that are not touched
+    by the live UserSocialAuth retirement step, so they must be explicitly cleaned up.
+    """
+    historical_model = getattr(getattr(UserSocialAuth, 'history', None), 'model', None)
+    if historical_model is None:
+        pytest.skip('UserSocialAuth has no history model in this environment')
+
+    user = UserFactory.create(username='hist-sso-user', email='hist-sso-user@example.com')
+    record = historical_model.objects.create(
+        user=user,
+        id=1,
+        provider='google-oauth2',
+        uid='hist-sso@example.com',
+        extra_data={'email': 'hist-sso@example.com'},
+        created=timezone.now(),
+        modified=timezone.now(),
+        history_date=timezone.now(),
+        history_type='+',
+    )
+    history_id = record.history_id
+
+    call_command('retire_user', username=user.username, user_email=user.email)
+
+    assert not historical_model.objects.filter(history_id=history_id).exists()
