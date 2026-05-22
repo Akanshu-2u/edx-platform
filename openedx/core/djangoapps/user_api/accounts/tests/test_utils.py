@@ -316,7 +316,6 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
             [query['sql'] for query in ctx],
             table=table_name,
         )
-        # Verify history_id appears in the SET expression of the UPDATE, not just the WHERE clause,
         # since rows are filtered by user_id and history_id is used to build the unique redacted uid.
         sql_list = [query['sql'].upper() for query in ctx]
         assert any('HISTORY_ID' in sql and 'UPDATE' in sql for sql in sql_list), (
