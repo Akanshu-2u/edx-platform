@@ -175,9 +175,24 @@ def test_retire_user_redacts_sso_pii_before_deletion(setup_retirement_states, so
 
 
 @skip_unless_lms
-def test_retire_user_redacts_historical_social_auth(setup_retirement_states):  # lint-amnesty, pylint: disable=redefined-outer-name, unused-argument  # noqa: F811
+@pytest.mark.parametrize('historical_configs', [
+    # Single historical record
+    [
+        {'provider': 'google-oauth2', 'uid': 'hist-sso@example.com',
+         'extra_data': {'email': 'hist-sso@example.com', 'name': 'SSO User'}},
+    ],
+    # Multiple historical records across providers
+    [
+        {'provider': 'google-oauth2', 'uid': 'hist-google@example.com',
+         'extra_data': {'email': 'hist-google@example.com', 'name': 'Google User'}},
+        {'provider': 'tpa-saml', 'uid': 'hist-saml@example.com',
+         'extra_data': {'email': 'hist-saml@example.com', 'name': 'SAML User'}},
+    ],
+])
+def test_retire_user_redacts_historical_social_auth(setup_retirement_states, historical_configs):  # lint-amnesty, pylint: disable=redefined-outer-name, unused-argument  # noqa: F811
     """
     Test that HistoricalUserSocialAuth records are redacted and deleted when retire_user is called.
+    Covers both single and multiple historical record scenarios.
 
     HistoricalUserSocialAuth rows are django-simple-history snapshots that are not touched
     by the live UserSocialAuth retirement step, so they must be explicitly cleaned up.
@@ -187,19 +202,25 @@ def test_retire_user_redacts_historical_social_auth(setup_retirement_states):  #
         pytest.skip('UserSocialAuth has no history model, skipping')
 
     user = UserFactory.create(username='hist-sso-user', email='hist-sso-user@example.com')
-    record = historical_model.objects.create(
-        user=user,
-        id=1,
-        provider='google-oauth2',
-        uid='hist-sso@example.com',
-        extra_data={'email': 'hist-sso@example.com'},
-        created=timezone.now(),
-        modified=timezone.now(),
-        history_date=timezone.now(),
-        history_type='+',
-    )
-    history_id = record.history_id
+    history_ids = [
+        historical_model.objects.create(
+            user=user,
+            id=idx + 1,
+            provider=cfg['provider'],
+            uid=cfg['uid'],
+            extra_data=cfg['extra_data'],
+            created=timezone.now(),
+            modified=timezone.now(),
+            history_date=timezone.now(),
+            history_type='+',
+        ).history_id
+        for idx, cfg in enumerate(historical_configs)
+    ]
 
-    call_command('retire_user', username=user.username, user_email=user.email)
+    with CaptureQueriesContext(connection) as ctx:
+        call_command('retire_user', username=user.username, user_email=user.email)
 
-    assert not historical_model.objects.filter(history_id=history_id).exists()
+    table_name = historical_model._meta.db_table
+    assert_update_before_delete([query['sql'] for query in ctx], table=table_name)
+    for history_id in history_ids:
+        assert not historical_model.objects.filter(history_id=history_id).exists()
