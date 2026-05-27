@@ -1,6 +1,5 @@
 """
-Unit tests for user account utility functions, including social links, completion helpers,
-and social-auth PII redaction utilities.
+Unit tests for user account utility functions, including social links, completion, and social-auth PII redaction.
 """
 
 from contextlib import contextmanager
@@ -281,11 +280,7 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
         )
 
     def test_redacted_uid_format(self):
-        """
-        uid must follow the redacted-before-delete-{history_id}@safe.com format and extra_data
-        must be cleared. Verified at two levels: SQL ordering via CaptureQueriesContext (UPDATE
-        precedes DELETE) and uid value via pre_delete signal.
-        """
+        """Verify uid is redacted to the correct format, extra_data is cleared, and UPDATE precedes DELETE."""
         record = self._create_historical_record(uid='private@example.com')
         history_id = record.history_id
         expected_uid = f'{REDACTED_SOCIAL_AUTH_UID_PREFIX}{history_id}{REDACTED_SOCIAL_AUTH_UID_SUFFIX}'
