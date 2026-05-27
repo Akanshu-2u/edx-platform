@@ -171,6 +171,3 @@ def test_retire_user_redacts_sso_pii_before_deletion(setup_retirement_states, so
     retired_user_status = UserRetirementStatus.objects.filter(original_username=user.username).first()
     assert retired_user_status is not None
     assert retired_user_status.original_email == 'sso-user@example.com'
-
-
-
