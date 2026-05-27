@@ -230,16 +230,10 @@ def redact_and_delete_historical_social_auth(user_id):
     """
     Redact PII from all HistoricalUserSocialAuth records for the given user, then delete them.
 
-    HistoricalUserSocialAuth rows are django-simple-history snapshots not covered by the
-    standard UserSocialAuth retirement step, so they must be explicitly cleaned up.
+    Downstream copies of data may use soft-deletes, and redacting before deleting
+    ensures PII for retired users (or future retirements) is not retained.
     """
-    historical_social_auth_model = getattr(getattr(UserSocialAuth, 'history', None), 'model', None)
-    if historical_social_auth_model is None:
-        LOGGER.warning(
-            'redact_and_delete_historical_social_auth: UserSocialAuth has no history model, skipping for user_id=%s',
-            user_id,
-        )
-        return
+    historical_social_auth_model = UserSocialAuth.history.model
     historical_queryset = historical_social_auth_model.objects.filter(user_id=user_id)
     historical_queryset.update(
         uid=Concat(
@@ -262,8 +256,6 @@ def create_retirement_request_and_deactivate_account(user):
 
     # Redact and unlink LMS social auth accounts.
     redact_and_delete_social_auth(user.id)
-    # Redact and delete django-simple-history snapshots of social auth records.
-    redact_and_delete_historical_social_auth(user.id)
 
     # Change LMS password & email
     user.email = get_retired_email_by_email(user.email)

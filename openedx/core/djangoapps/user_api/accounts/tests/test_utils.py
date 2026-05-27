@@ -3,7 +3,6 @@ Unit tests for user account utility functions, including social links, completio
 and social-auth PII redaction utilities.
 """
 
-import unittest.mock
 from contextlib import contextmanager
 
 import ddt
@@ -261,9 +260,7 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
     def setUp(self):
         super().setUp()
         self.user = UserFactory.create(username='testuser', email='testuser@example.com')
-        self.historical_social_auth_model = getattr(getattr(UserSocialAuth, 'history', None), 'model', None)
-        if self.historical_social_auth_model is None:
-            self.skipTest('UserSocialAuth has no history model, skipping')
+        self.historical_social_auth_model = UserSocialAuth.history.model
 
     def _create_historical_record(self, provider='google-oauth2', uid='user@example.com', extra_data=None, source_id=1):
         """
@@ -287,7 +284,7 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
         """
         uid must follow the redacted-before-delete-{history_id}@safe.com format and extra_data
         must be cleared. Verified at two levels: SQL ordering via CaptureQueriesContext (UPDATE
-        precedes DELETE, history_id embedded in SET expression) and uid value via pre_delete signal.
+        precedes DELETE) and uid value via pre_delete signal.
         """
         record = self._create_historical_record(uid='private@example.com')
         history_id = record.history_id
@@ -313,11 +310,6 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
         assert_update_before_delete(
             [query['sql'] for query in ctx],
             table=table_name,
-        )
-        # since rows are filtered by user_id and history_id is used to build the unique redacted uid.
-        sql_list = [query['sql'].upper() for query in ctx]
-        assert any('HISTORY_ID' in sql and 'UPDATE' in sql for sql in sql_list), (
-            'UPDATE must incorporate history_id into the redacted uid SET expression'
         )
 
         # Verify value-level: correct redacted uid and cleared extra_data.
@@ -351,10 +343,3 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
 
         assert not self.historical_social_auth_model.objects.filter(user=self.user).exists()
         assert self.historical_social_auth_model.objects.filter(history_id=other_record.history_id).exists()
-
-    def test_skips_gracefully_when_history_model_unavailable(self):
-        """
-        Returns without error when UserSocialAuth has no history model registered.
-        """
-        with unittest.mock.patch.object(UserSocialAuth, 'history', None):
-            redact_and_delete_historical_social_auth(self.user.id)
