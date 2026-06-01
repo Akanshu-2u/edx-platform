@@ -269,7 +269,7 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
     def test_historical_social_auth_redact_before_delete(self):
         """
         Ensure HistoricalUserSocialAuth records are properly redacted and deleted for retirement.
-        
+
         The fields uid (email format) and extra_data must be redacted before delete.
         """
         self._create_historical_record(provider='google-oauth2', uid='google@example.com', source_id=1)
