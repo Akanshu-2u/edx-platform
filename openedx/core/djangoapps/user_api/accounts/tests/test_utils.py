@@ -188,6 +188,21 @@ class RedactAndDeleteSocialAuthTest(TestCase):
             extra_data=extra_data,
         )
 
+    def _assert_redact_and_delete_social_auth(self, social_auth_ids):
+        """
+        Test redact_and_delete_social_auth and assert that all given records were
+        redacted before deletion.
+        """
+        with disconnected_social_auth_redaction_signal(), CaptureQueriesContext(connection) as ctx:
+            redact_and_delete_social_auth(self.user.id)
+
+        assert_redact_before_delete(
+            [query['sql'] for query in ctx],
+            table='social_auth_usersocialauth',
+            expected_redacted_value_list=[REDACTED_SOCIAL_AUTH_UID_PREFIX],
+        )
+        assert not UserSocialAuth.objects.filter(id__in=social_auth_ids).exists()
+
     def test_redact_and_delete_redacts_single_sso_record(self):
         """
         Test that redact_and_delete_social_auth redacts and deletes a single SSO record.
@@ -197,17 +212,7 @@ class RedactAndDeleteSocialAuthTest(TestCase):
             uid='google@example.com',
             extra_data={'email': 'google@example.com', 'name': 'Google User'},
         )
-        social_auth_id = social_auth.pk
-
-        with disconnected_social_auth_redaction_signal(), CaptureQueriesContext(connection) as ctx:
-            redact_and_delete_social_auth(self.user.id)
-
-        assert_redact_before_delete(
-            [query['sql'] for query in ctx],
-            table='social_auth_usersocialauth',
-            expected_redacted_value_list=[REDACTED_SOCIAL_AUTH_UID_PREFIX],
-        )
-        assert not UserSocialAuth.objects.filter(id=social_auth_id).exists()
+        self._assert_redact_and_delete_social_auth([social_auth.pk])
 
     def test_redact_and_delete_redacts_multiple_sso_records(self):
         """
@@ -225,16 +230,7 @@ class RedactAndDeleteSocialAuthTest(TestCase):
                 extra_data={'email': 'saml@example.com', 'name': 'SAML User', 'uid': 'saml-uid'},
             ).pk,
         ]
-
-        with disconnected_social_auth_redaction_signal(), CaptureQueriesContext(connection) as ctx:
-            redact_and_delete_social_auth(self.user.id)
-
-        assert_redact_before_delete(
-            [query['sql'] for query in ctx],
-            table='social_auth_usersocialauth',
-            expected_redacted_value_list=[REDACTED_SOCIAL_AUTH_UID_PREFIX],
-        )
-        assert not UserSocialAuth.objects.filter(id__in=social_auth_ids).exists()
+        self._assert_redact_and_delete_social_auth(social_auth_ids)
 
 
 @skip_unless_lms
