@@ -284,13 +284,12 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
             history_type='+',
         )
 
-        table_name = self.historical_social_auth_model._meta.db_table
         with CaptureQueriesContext(connection) as ctx:
             redact_and_delete_historical_social_auth(self.user.id)
 
         assert_redact_before_delete(
             [query['sql'] for query in ctx],
-            table=table_name,
+            table=self.historical_social_auth_model._meta.db_table,
             expected_redacted_value_list=[REDACTED_SOCIAL_AUTH_UID_PREFIX],
         )
         assert not self.historical_social_auth_model.objects.filter(user=self.user).exists()
