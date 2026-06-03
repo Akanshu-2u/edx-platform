@@ -167,7 +167,7 @@ def test_retire_user_redacts_sso_pii_before_deletion(setup_retirement_states, so
 
     assert_redact_before_delete(
         [query['sql'] for query in ctx],
-        table='social_auth_usersocialauth',
+        table=UserSocialAuth._meta.db_table,
         expected_redacted_value_list=[REDACTED_SOCIAL_AUTH_UID_PREFIX],
     )
     for auth_id in auth_ids:
