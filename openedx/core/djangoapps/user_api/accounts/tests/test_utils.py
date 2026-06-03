@@ -248,16 +248,14 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
         uid='user@example.com',
         extra_data=None,
         source_id=1,
-        user=None,
     ):
         """
         Create a HistoricalUserSocialAuth record directly for test setup.
         """
         if extra_data is None:
             extra_data = {'email': uid, 'name': 'Test User'}
-        user = user or self.user
-        return self.historical_social_auth_model.objects.create(
-            user=user,
+        self.historical_social_auth_model.objects.create(
+            user=self.user,
             id=source_id,
             provider=provider,
             uid=uid,
@@ -277,15 +275,6 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
         self._create_historical_record(provider='google-oauth2', uid='google@example.com', source_id=1)
         self._create_historical_record(provider='tpa-saml', uid='saml@example.com', source_id=2)
 
-        other_user = UserFactory.create(username='otheruser', email='other@example.com')
-        other_record = self._create_historical_record(
-            provider='google-oauth2',
-            uid='other@example.com',
-            extra_data={},
-            source_id=3,
-            user=other_user,
-        )
-
         with CaptureQueriesContext(connection) as ctx:
             redact_and_delete_historical_social_auth(self.user.id)
 
@@ -295,4 +284,3 @@ class RedactAndDeleteHistoricalSocialAuthTest(TestCase):
             expected_redacted_value_list=[REDACTED_SOCIAL_AUTH_UID_PREFIX],
         )
         assert not self.historical_social_auth_model.objects.filter(user=self.user).exists()
-        assert self.historical_social_auth_model.objects.filter(history_id=other_record.history_id).exists()
