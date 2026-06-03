@@ -1,5 +1,7 @@
 """
-Unit tests for user account utility functions, including social links, completion, and social-auth PII redaction.
+Unit tests for user account utility functions.
+
+Includes tests for social links, social-auth PII redaction, completion, etc.
 """
 
 from contextlib import contextmanager
