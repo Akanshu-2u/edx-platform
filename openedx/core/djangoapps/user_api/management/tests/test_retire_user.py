@@ -15,7 +15,7 @@ from django.db.models.signals import pre_delete
 from django.test.utils import CaptureQueriesContext
 from social_django.models import UserSocialAuth
 
-from common.djangoapps.student.tests.factories import UserFactory  # lint-amnesty
+from common.djangoapps.student.tests.factories import UserFactory
 from openedx.core.djangoapps.user_api.accounts.signals import (
     redact_social_auth_pii_before_deletion,
 )
