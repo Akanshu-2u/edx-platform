@@ -601,7 +601,7 @@ edx-i18n-tools==2.0.0
     # via
     #   -r requirements/edx/base.txt
     #   ora2
-edx-lint==6.1.0
+git+https://github.com/Akanshu-2u/edx-lint.git@aaich/pii-squelch-annotation#egg=edx-lint
     # via -r requirements/edx/testing.in
 edx-milestones==2.0.0
     # via -r requirements/edx/base.txt
