@@ -49,6 +49,7 @@ class Notification(TimeStampedModel):
     content_context = models.JSONField(default=dict)
     content_url = models.URLField(null=True, blank=True)  # noqa: DJ001
     web = models.BooleanField(default=True, null=False, blank=False)
+    # pylint: disable-next=pii-invalid-no-pii-annotation  # field does not store user PII data, safe under OEP-30
     email = models.BooleanField(default=False, null=False, blank=False)
     push = models.BooleanField(default=False, null=False, blank=False)
     last_read = models.DateTimeField(null=True, blank=True)
