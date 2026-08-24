@@ -602,7 +602,7 @@ edx-i18n-tools==2.0.0
     # via
     #   -r requirements/edx/base.txt
     #   ora2
-edx-lint==6.1.0
+edx-lint==6.2.0
     # via -r requirements/edx/testing.in
 edx-milestones==2.0.0
     # via -r requirements/edx/base.txt
