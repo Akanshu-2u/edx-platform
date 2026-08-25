@@ -115,7 +115,7 @@ class CreditProvider(TimeStampedModel):
         )
     )
 
-    # pylint: disable-next=pii-invalid-no-pii-annotation  # message template, not an email address
+    # pylint: disable-next=pii-invalid-no-pii-annotation  # field does not store user PII data, safe under OEP-30
     eligibility_email_message = models.TextField(
         default="",
         help_text=gettext_lazy(
@@ -125,7 +125,7 @@ class CreditProvider(TimeStampedModel):
         )
     )
 
-    # pylint: disable-next=pii-invalid-no-pii-annotation  # message template, not an email address
+    # pylint: disable-next=pii-invalid-no-pii-annotation  # field does not store user PII data, safe under OEP-30
     receipt_email_message = models.TextField(
         default="",
         help_text=gettext_lazy(
