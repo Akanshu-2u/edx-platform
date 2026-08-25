@@ -541,8 +541,12 @@ edx-event-bus-kafka==6.1.0
 edx-event-bus-redis==1.0.0
     # via openedx-platform
 edx-i18n-tools==2.0.0
-    # via ora2
-edx-lint==6.1.0
+    # via
+    #   -r requirements/edx/doc.txt
+    #   -r requirements/edx/testing.txt
+    #   ora2
+git+https://github.com/Akanshu-2u/edx-lint.git@master#egg=edx-lint
+    # via -r requirements/edx/testing.txt
 edx-milestones==2.0.0
     # via openedx-platform
 edx-opaque-keys==4.0.0
