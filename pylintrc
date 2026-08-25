@@ -258,7 +258,6 @@ enable =
 	unrecognized-inline-option,
 	useless-suppression,
 	
-	pii-missing-squelch,
 	pii-invalid-no-pii-annotation,
 disable = 
 	bad-indentation,
@@ -420,9 +419,6 @@ overgeneral-exceptions = builtins.Exception
 [PII]
 pii-terms = 
 	email,
-	username,
-	password
-pii-safe-key-patterns = 
-pii-squelch-flag = SQUELCH_PII_IN_LOGS
+	username
 
-# c6576c30a1586cc9d6c8100fb2d0fab2beedaf15
+# e72ecbe0cf2f12ac71fdd2c33dc7bfb778f81c6e
