@@ -144,10 +144,6 @@ dependencies = [
     "openedx-authz", # Authorization Framework for the Open edX Ecosystem
 ]
 
-[project.optional-dependencies]
-openstack = [
-    "django-storage-swift==1.2.19",
-]
 [dependency-groups]
 coverage = [
     "coverage", # Code coverage testing for Python
